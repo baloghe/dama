@@ -1,16 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-
 import { BrowserRouter } from 'react-router-dom';
 import axios from "axios";
-
-
-import Spinner from "./Spinner";
 
 import './index.css';
 import App from './App';
 import AppRouter from "./AppRouter";
-
+import Spinner from "./Spinner";
 
 const demoData=[
   { "topic": "Chapter 1"
