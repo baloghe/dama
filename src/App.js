@@ -1,6 +1,8 @@
 import './App.css';
 import React from 'react';
+import axios from "axios";
 
+import Spinner from "./Spinner";
 
 const useState = React.useState;
 
@@ -29,14 +31,31 @@ function shuffleArray (array) {
   return array;
 };
 
+//const getTopics = (data) => data.map(e => {return {"title": e["topic"], "cnt": e["cnt"]} });
 const getTopics = (data) => data.map(e => e["topic"]);
+const getTopicsDB = (data) => data.map(e => {return {topic: e["topic"], id: e["_id"]}});
+const getTopicsDemo = (data) => data.map((e,i) => {return {topic: e["topic"], id: i}});
 
-const getTests = (data, topics, mode) => {
+const getTestsDemo = (data, topics, mode) => {
 	let fltr = data.filter( (e,i) => topics.includes(i));
 	let lst = [];
-	for(topic of fltr){
-		//console.log(`getTests :: topic=${topic["topic"]}`);
+	for(let topic of fltr){
+		//console.log(`getTestsDemo :: topic=${topic["topic"]}`);
 		lst = [...lst, ...topic["quiz"] ];
+	}
+	lst = shuffleArray(lst);
+	if(mode==="ALL"){
+		return lst;
+	} else {
+		return lst.filter((e,i) => (i<10));
+	}
+};
+const getTestsDB = (data, mode) => {
+	//console.log(`getTestsDB :: data=${JSON.stringify(data)}`);
+	let lst = [];
+	for(let t of data){
+		//console.log(`getTestsDemo :: topic=${topic["topic"]}`);
+		lst = [...lst, ...t["quiz"] ];
 	}
 	lst = shuffleArray(lst);
 	if(mode==="ALL"){
@@ -91,6 +110,7 @@ function Test({actNum, totNum, question, answers, valids, userAnswers, next, ret
 		return {
 			"checked": showResults ? userAnswers.includes(value) : selAns.includes(value),
 			"onChange": ev => {
+				let newSelAns;
 				if(ev.target.checked) {
 					newSelAns = [...selAns, value];
 				} else {
@@ -110,7 +130,7 @@ function Test({actNum, totNum, question, answers, valids, userAnswers, next, ret
 					  ;
 			let empty = (!valids.includes(i)) && (!userAnswers.includes(i));
 			return (
-				<tr key="{i}">
+				<tr key={i}>
 					<td key="res">
 						{bad ? '\u274C' : (empty ? '' : '\u2705')}
 					</td>
@@ -125,7 +145,7 @@ function Test({actNum, totNum, question, answers, valids, userAnswers, next, ret
 		//False => user selection enabled
 		} else {
 			return (
-				<tr key="{i}">
+				<tr key={i}>
 					<td key="ans">
 						<input type="checkbox" name={i} {...multiSelect(i)} />
 					</td>
@@ -171,7 +191,7 @@ function TestContainer({tests, exit, finish}){
 	//const mapValidsToShuffle = () => tests[actTestNum]["valid"].map( (e) => actShuffle.indexOf(e) );
 	const mapValidsToShuffle = () => {
 		let vorig = tests[actTestNum]["valid"];
-		v = vorig.map( (e) => actShuffle.indexOf(e) );
+		let v = vorig.map( (e) => actShuffle.indexOf(e) );
 		//console.log(`TestContainer :: valid: ${vorig}, shuffle: ${actShuffle} => mapValid=${v}`);
 		return v;
 	};
@@ -181,7 +201,7 @@ function TestContainer({tests, exit, finish}){
 		v.sort();
 		let a = actAns.map(e=>e).sort();
 		let ret = true;
-		for(i in a){
+		for(let i in a){
 			if(a[i] !== v[i]){
 				ret = false;
 				break;
@@ -192,7 +212,7 @@ function TestContainer({tests, exit, finish}){
 	
 	const next = () => {
 		//increase counter
-		newTestNum = actTestNum + 1;
+		let newTestNum = actTestNum + 1;
 		setActTestNum(newTestNum);
 		if(newTestNum >= tests.length){
 			//end of questions, return to Settings to show results
@@ -244,6 +264,7 @@ function Settings({topics, changeSelTopics, modes, changeMode, start}){
 		return {
 			"checked": selTopics.includes(value),
 			"onChange": ev => {
+				let newTopics;
 				if(ev.target.checked) {
 					newTopics = [...selTopics, value];
 				} else {
@@ -257,7 +278,7 @@ function Settings({topics, changeSelTopics, modes, changeMode, start}){
 	}
 	
 	function modeChanged(ev){
-		newValue = ev.target.value;
+		let newValue = ev.target.value;
 		setMode(newValue);
 		changeMode(newValue);
 		//console.log(`Settings.mode to ${newValue}`);
@@ -319,14 +340,16 @@ function Results({results, quit}){
 	
 }
 
-function App({isDemo, demoData}){
+function App({isDemo, demoData, tests, dbAvailable}){
 	
 	const modes = ["ALL", "MAX10"];
 	
-	const [data, setData] = useState(isDemo ? demoData : []);
+	// eslint-disable-next-line
+	const [data, setData] = useState(isDemo ? demoData : null);
+	// eslint-disable-next-line
+	const [topics, setTopics] = useState(isDemo ? getTopicsDemo(demoData) : getTopicsDB(tests));
 
 	const [state, setState] = useState("SETTINGS");
-	const [topics, setTopics] = useState(isDemo ? getTopics(demoData) : []);
 	const [selTopics, setSelTopics] = useState([]);
 	const [mode, setMode] = useState(modes[0]);
 	const [startTime, setStartTime] = useState();
@@ -343,8 +366,29 @@ function App({isDemo, demoData}){
 	};
 	
 	const startTest = () => {
-		setState("TEST");
-		setStartTime(new Date());
+		//collect data of selected topics
+		if(dbAvailable){
+			//we have no tests, only their titles
+			const request = {id: selTopics.map(i => {return topics[i].id})};
+			//console.log(`App.startTest :: request=${JSON.stringify(request)}`);
+		
+			setState("LOADQUIZ");
+			
+			axios
+			.post(`/api/getquiz`, request)
+			.then((data) => {
+				//console.log(`App.startTest :: data.data=${JSON.stringify(data.data)}`);
+				setData(data.data);
+				//start test
+				setState("TEST");
+				setStartTime(new Date());
+			});
+
+		} else {
+			//start test
+			setState("TEST");
+			setStartTime(new Date());
+		}
 		//console.log(`App :: startTest with topics=${selTopics}, mode=${mode}`);
 	};
 	
@@ -363,48 +407,23 @@ function App({isDemo, demoData}){
 	const quitResults = () => {
 		setState("SETTINGS");
 	};
+	
+	const getTests = () => {
+		//console.log(`App.getTests :: data=${JSON.stringify(data)}`);
+		return isDemo ? getTestsDemo(data, selTopics, mode) : getTestsDB(data, mode);
+	};
 
   return (
     <div>
 		<h2>DAMA {isDemo ? "-DEMO" : ""}</h2>
-		{state==="SETTINGS" ? <Settings topics={topics} changeSelTopics={changeSelTopics} modes={modes} changeMode={changeMode} start={startTest} /> : null }
-		{state==="TEST" ? <TestContainer tests={getTests(data, selTopics, mode)} exit={exitTest} finish={finishTest} /> : null }
+		{state==="SETTINGS" ? <Settings topics={getTopics(topics)} changeSelTopics={changeSelTopics} modes={modes} changeMode={changeMode} start={startTest} /> : null }
+		{state==="TEST" ? <TestContainer tests={getTests()} exit={exitTest} finish={finishTest} /> : null }
 		{state==="RESULTS" ? <Results results={results} quit={quitResults} /> : null }
+		{state==="LOADQUIZ" ? 	<div><p>Loading quiz(zes)...</p><Spinner /></div> : null }
     </div>
   );
 
 }
-
-const demoData=[
-  { "topic": "Chapter 1"
-   ,"quiz":[
-    { "question": "How are you?"
-     ,"answers": ["Fine, thanks!", "So-so...", "Fuck off!"]
-     ,"valid": [0,1]
-     },
-    { "question": "Did you enjoy the test?"
-     ,"answers": ["Yes", "NO"]
-     ,"valid": [1]
-     }
-   ]
-  },
-  { "topic": "Chapter 4"
-   ,"quiz":[
-    { "question": "What are the three essential components of Data Architecture?"
-     ,"answers": ["Artifacts", "Activities", "Behavior", "Applications"]
-     ,"valid": [0,1,2]
-     },
-    { "question": "Why is Data Architecture fundamental to data management?"
-     ,"answers": ["It represents organizational data at different abstraction levels", "It eliminates the need for data models", "It helps management make decisions about data", "It replaces the need for data governance"]
-     ,"valid": [0,2]
-     },
-    { "question": "What do Data Architecture artifacts typically include?"
-     ,"answers": ["Standards for collecting and storing data", "Definitions and data flows", "Marketing strategies", "Specifications for existing and target states"]
-     ,"valid": [0,1,3]
-     }
-   ]
-  }
-]
 
 //ReactDOM.render(<App isDemo={true} demoData={demoData} />, document.querySelector("#app"))
 
