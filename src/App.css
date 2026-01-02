@@ -16,6 +16,10 @@ h3 {
   margin-bottom: 15px;
 }
 
+ul {
+	list-style: none;
+}
+
 .question {
   font-weight: bold;
 }
